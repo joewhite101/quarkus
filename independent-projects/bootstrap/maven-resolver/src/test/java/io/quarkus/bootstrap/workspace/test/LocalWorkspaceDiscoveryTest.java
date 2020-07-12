@@ -17,7 +17,6 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import org.apache.maven.model.Dependency;
@@ -117,6 +116,78 @@ public class LocalWorkspaceDiscoveryTest {
     }
 
     @Test
+    public void loadWorkspaceFromRootDirWithParentInChildDir() throws Exception {
+        final URL projectUrl = Thread.currentThread().getContextClassLoader().getResource("workspace-parent-is-not-root-dir");
+        assertNotNull(projectUrl);
+        final Path projectDir = Paths.get(projectUrl.toURI());
+        assertTrue(Files.exists(projectDir));
+        final LocalProject project = LocalProject.loadWorkspace(projectDir);
+
+        assertEquals("acme", project.getArtifactId());
+        assertWorkspaceWithParentInChildDir(project);
+    }
+
+    @Test
+    public void loadWorkspaceFromModuleDirWithParentInChildDir() throws Exception {
+        final URL projectUrl = Thread.currentThread().getContextClassLoader()
+                .getResource("workspace-parent-is-not-root-dir/acme-application");
+        assertNotNull(projectUrl);
+        final Path projectDir = Paths.get(projectUrl.toURI());
+        assertTrue(Files.exists(projectDir));
+        final LocalProject project = LocalProject.loadWorkspace(projectDir);
+
+        assertEquals("acme-application", project.getArtifactId());
+        assertWorkspaceWithParentInChildDir(project);
+    }
+
+    private void assertWorkspaceWithParentInChildDir(final LocalProject project) {
+        final LocalWorkspace workspace = project.getWorkspace();
+        assertNotNull(workspace.getProject("org.acme", "acme"));
+        assertNotNull(workspace.getProject("org.acme", "acme-parent"));
+        assertNotNull(workspace.getProject("org.acme", "acme-dependencies"));
+        assertNotNull(workspace.getProject("org.acme", "acme-backend"));
+        assertNotNull(workspace.getProject("org.acme", "acme-backend-rest-api"));
+        assertNotNull(workspace.getProject("org.acme", "acme-application"));
+        assertEquals(6, workspace.getProjects().size());
+    }
+
+    @Test
+    public void loadWorkspaceWithAlternatePomDefaultPom() throws Exception {
+        final URL projectUrl = Thread.currentThread().getContextClassLoader()
+                .getResource("workspace-alternate-pom/root/module1");
+        assertNotNull(projectUrl);
+        final Path projectDir = Paths.get(projectUrl.toURI());
+        assertTrue(Files.exists(projectDir));
+        final LocalProject project = LocalProject.loadWorkspace(projectDir);
+
+        assertEquals("root-module1", project.getArtifactId());
+        final LocalWorkspace workspace = project.getWorkspace();
+        assertNotNull(workspace.getProject("org.acme", "root"));
+        assertNotNull(workspace.getProject("org.acme", "root-module1"));
+        assertNull(workspace.getProject("org.acme", "root-module2"));
+        assertNotNull(workspace.getProject("org.acme", "root-submodule"));
+        assertEquals(3, workspace.getProjects().size());
+    }
+
+    @Test
+    public void loadWorkspaceWithAlternatePom() throws Exception {
+        final URL projectUrl = Thread.currentThread().getContextClassLoader()
+                .getResource("workspace-alternate-pom/root/module1/pom2.xml");
+        assertNotNull(projectUrl);
+        final Path projectDir = Paths.get(projectUrl.toURI());
+        assertTrue(Files.exists(projectDir));
+        final LocalProject project = LocalProject.loadWorkspace(projectDir);
+
+        assertEquals("root-module1", project.getArtifactId());
+        final LocalWorkspace workspace = project.getWorkspace();
+        assertNotNull(workspace.getProject("org.acme", "root"));
+        assertNotNull(workspace.getProject("org.acme", "root-module1"));
+        assertNotNull(workspace.getProject("org.acme", "root-module2"));
+        assertNull(workspace.getProject("org.acme", "root-submodule"));
+        assertEquals(3, workspace.getProjects().size());
+    }
+
+    @Test
     public void loadIndependentProjectInTheWorkspaceTree() throws Exception {
         final LocalProject project = LocalProject
                 .loadWorkspace(workDir.resolve("root").resolve("independent").resolve("target").resolve("classes"));
@@ -128,8 +199,6 @@ public class LocalWorkspaceDiscoveryTest {
         final Map<AppArtifactKey, LocalProject> projects = project.getWorkspace().getProjects();
         assertEquals(6, projects.size());
         assertTrue(projects.containsKey(new AppArtifactKey(MvnProjectBuilder.DEFAULT_GROUP_ID, "independent")));
-
-        assertLocalDeps(project, "root-module-not-direct-child", "root-no-parent-module", "root-module-with-parent");
     }
 
     @Test
@@ -141,7 +210,6 @@ public class LocalWorkspaceDiscoveryTest {
         assertEquals(MvnProjectBuilder.DEFAULT_GROUP_ID, project.getGroupId());
         assertEquals("root-no-parent-module", project.getArtifactId());
         assertEquals(MvnProjectBuilder.DEFAULT_VERSION, project.getVersion());
-        assertLocalDeps(project);
     }
 
     @Test
@@ -156,7 +224,6 @@ public class LocalWorkspaceDiscoveryTest {
         final Map<AppArtifactKey, LocalProject> projects = project.getWorkspace().getProjects();
         assertEquals(5, projects.size());
         assertTrue(projects.containsKey(new AppArtifactKey(MvnProjectBuilder.DEFAULT_GROUP_ID, "root-no-parent-module")));
-        assertLocalDeps(project, "root-module-not-direct-child");
     }
 
     @Test
@@ -168,7 +235,6 @@ public class LocalWorkspaceDiscoveryTest {
         assertEquals(MvnProjectBuilder.DEFAULT_GROUP_ID, project.getGroupId());
         assertEquals("root-module-with-parent", project.getArtifactId());
         assertEquals(MvnProjectBuilder.DEFAULT_VERSION, project.getVersion());
-        assertLocalDeps(project);
     }
 
     @Test
@@ -182,7 +248,6 @@ public class LocalWorkspaceDiscoveryTest {
         assertEquals(MvnProjectBuilder.DEFAULT_VERSION, project.getVersion());
 
         assertCompleteWorkspace(project);
-        assertLocalDeps(project, "root-module-not-direct-child", "root-no-parent-module");
     }
 
     @Test
@@ -196,7 +261,6 @@ public class LocalWorkspaceDiscoveryTest {
         assertEquals(MvnProjectBuilder.DEFAULT_VERSION, project.getVersion());
 
         assertCompleteWorkspace(project);
-        assertLocalDeps(project);
     }
 
     @Test
@@ -217,7 +281,6 @@ public class LocalWorkspaceDiscoveryTest {
         assertTrue(projects.containsKey(new AppArtifactKey(MvnProjectBuilder.DEFAULT_GROUP_ID, "another-child")));
         assertTrue(projects
                 .containsKey(new AppArtifactKey(MvnProjectBuilder.DEFAULT_GROUP_ID, "empty-parent-relative-path-module")));
-        assertLocalDeps(project, "another-child");
     }
 
     /**
@@ -234,7 +297,6 @@ public class LocalWorkspaceDiscoveryTest {
         assertEquals(MvnProjectBuilder.DEFAULT_VERSION, project.getVersion());
 
         assertCompleteWorkspace(project);
-        assertLocalDeps(project);
     }
 
     @Test
@@ -329,20 +391,5 @@ public class LocalWorkspaceDiscoveryTest {
         assertTrue(projects
                 .containsKey(new AppArtifactKey(MvnProjectBuilder.DEFAULT_GROUP_ID, "empty-parent-relative-path-module")));
         assertTrue(projects.containsKey(new AppArtifactKey(MvnProjectBuilder.DEFAULT_GROUP_ID, "root")));
-    }
-
-    private static void assertLocalDeps(LocalProject project, String... deps) {
-        final List<LocalProject> list = project.getSelfWithLocalDeps();
-        assertEquals(deps.length + 1, list.size());
-        int i = 0;
-        while (i < deps.length) {
-            final LocalProject dep = list.get(i);
-            assertEquals(deps[i++], dep.getArtifactId());
-            assertEquals(project.getGroupId(), dep.getGroupId());
-        }
-        final LocalProject self = list.get(i);
-        assertEquals(project.getGroupId(), self.getGroupId());
-        assertEquals(project.getArtifactId(), self.getArtifactId());
-        assertEquals(project.getVersion(), self.getVersion());
     }
 }
